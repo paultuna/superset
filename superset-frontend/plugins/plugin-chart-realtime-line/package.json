@@ -1,0 +1,25 @@
+{
+  "name": "@superset-ui/plugin-chart-realtime-line",
+  "version": "0.1.0",
+  "description": "Realtime incremental line chart plugin for Apache Superset",
+  "keywords": [
+    "superset"
+  ],
+  "license": "Apache-2.0",
+  "author": "Superset",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apache/superset.git",
+    "directory": "superset-frontend/plugins/plugin-chart-realtime-line"
+  },
+  "main": "src/index.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@superset-ui/chart-controls": "*",
+    "@superset-ui/core": "*",
+    "echarts": "*",
+    "react": "^18.3.0"
+  }
+}
