@@ -18,51 +18,119 @@
  */
 import { ChartProps } from '@superset-ui/core';
 
-/**
- * Converts the Superset query response into ECharts options.
- * On first load this produces a full chart; on incremental refreshes,
- * the component merges new series data via setOption (notMerge: false).
- */
-export default function transformProps(chartProps: ChartProps) {
+export interface RealtimeLineChartProps {
+  echartOptions: any;
+  width: number;
+  height: number;
+  formData: Record<string, any>;
+  queriesData: any[];
+}
+
+function buildSeriesKey(
+  groupbyValues: string[],
+  metricName: string,
+  hasMultipleMetrics: boolean,
+): string {
+  const groupPart = groupbyValues.length > 0 ? groupbyValues.join(', ') : null;
+  if (groupPart && hasMultipleMetrics) return `${groupPart} \u2013 ${metricName}`;
+  if (groupPart) return groupPart;
+  return metricName;
+}
+
+export default function transformProps(
+  chartProps: ChartProps,
+): RealtimeLineChartProps {
   const { queriesData, formData, width, height } = chartProps;
   const {
     smooth = true,
     show_legend = true,
+    metrics = [],
     metric,
     groupby = [],
     time_column,
+    time_window_ms = 300_000,
   } = formData;
-  const data: Record<string, unknown>[] = queriesData[0]?.data ?? [];
 
-  const seriesMap: Record<string, [string, number][]> = {};
+  // Normalise metrics to an array
+  const metricList: string[] = (
+    metrics.length > 0 ? metrics : metric ? [metric] : []
+  ).map((m: any) =>
+    typeof m === 'string' ? m : m?.label ?? m?.expressionType ?? String(m),
+  );
+
+  const data: Record<string, any>[] = queriesData[0]?.data ?? [];
+  const hasMultipleMetrics = metricList.length > 1;
+
+  // Build series map: seriesKey → [timestamp, value][]
+  const seriesMap = new Map<string, [string, number][]>();
+
   data.forEach(row => {
-    const seriesName =
-      (groupby as string[]).length > 0
-        ? (groupby as string[]).map(col => row[col]).join(', ')
-        : String(metric ?? 'value');
-    if (!seriesMap[seriesName]) seriesMap[seriesName] = [];
-    seriesMap[seriesName].push([
-      String(row['__timestamp'] ?? row[time_column as string]),
-      Number(row[String(metric)]),
-    ]);
+    const groupbyValues: string[] = (groupby as string[]).map(col =>
+      String(row[col] ?? ''),
+    );
+    metricList.forEach(metricName => {
+      const key = buildSeriesKey(groupbyValues, metricName, hasMultipleMetrics);
+      if (!seriesMap.has(key)) seriesMap.set(key, []);
+      const ts = row['__timestamp'] ?? row[time_column];
+      const val = row[metricName];
+      if (ts !== undefined && val !== undefined) {
+        seriesMap.get(key)!.push([ts, Number(val)]);
+      }
+    });
   });
 
-  const series = Object.entries(seriesMap).map(([name, points]) => ({
+  const series = Array.from(seriesMap.entries()).map(([name, points]) => ({
     name,
     type: 'line',
     smooth,
     data: points,
     animation: false,
+    showSymbol: false,
   }));
 
+  // Compute initial time window bounds from data (or now-window if no data)
+  const now = Date.now();
+  const allTimestamps = series.flatMap(s =>
+    s.data.map(([t]) => new Date(t).getTime()),
+  );
+  const maxTs = allTimestamps.length > 0 ? Math.max(...allTimestamps) : now;
+  const minTs = maxTs - time_window_ms;
+
   const echartOptions = {
-    grid: { top: 30, bottom: 50, left: 60, right: 20 },
-    xAxis: { type: 'time' },
-    yAxis: { type: 'value' },
-    legend: { show: show_legend },
-    tooltip: { trigger: 'axis' },
+    animation: false,
+    grid: { top: 36, bottom: 52, left: 64, right: 24, containLabel: true },
+    xAxis: {
+      type: 'time',
+      min: minTs,
+      max: maxTs,
+      axisLabel: {
+        formatter: (val: number) => new Date(val).toLocaleTimeString(),
+      },
+    },
+    yAxis: { type: 'value', scale: true },
+    legend: { show: show_legend, type: 'scroll', bottom: 0 },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+    },
+    dataZoom: [
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+        startValue: minTs,
+        endValue: maxTs,
+        zoomLock: true,
+        moveOnMouseMove: false,
+      },
+    ],
     series,
   };
 
-  return { echartOptions, width, height, formData, queriesData };
+  return {
+    echartOptions,
+    width,
+    height,
+    formData: { ...formData, time_window_ms },
+    queriesData,
+  };
 }

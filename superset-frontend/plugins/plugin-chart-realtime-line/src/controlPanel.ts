@@ -44,7 +44,7 @@ const config: ControlPanelConfig = {
             },
           },
         ],
-        ['metric'],
+        ['metrics'],
         ['groupby'],
         ['adhoc_filters'],
         ['row_limit'],
@@ -82,6 +82,27 @@ const config: ControlPanelConfig = {
               ),
               default: 500,
               isInt: true,
+            },
+          },
+        ],
+        [
+          {
+            name: 'time_window_ms',
+            config: {
+              type: 'SelectControl',
+              label: t('Sliding time window'),
+              description: t(
+                'Width of the visible time window on the X-axis. The chart scrolls to always show this duration ending at the latest data point.',
+              ),
+              default: 300_000,
+              choices: [
+                [30_000, t('30 seconds')],
+                [60_000, t('1 minute')],
+                [300_000, t('5 minutes')],
+                [600_000, t('10 minutes')],
+                [1_800_000, t('30 minutes')],
+                [3_600_000, t('1 hour')],
+              ],
             },
           },
         ],
